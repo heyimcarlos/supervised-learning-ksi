@@ -244,6 +244,9 @@ def clean_data(df):
 
     def get_all_unique(series):
         return list(series.dropna().unique())
+    
+    def get_all_values(series):
+        return list(series.dropna())
 
     #  TODO: Aggregation strategies
     # - Group involvement ages into different bins. Maybe we just use the actually involved? like the drivers?
@@ -305,7 +308,7 @@ def clean_data(df):
         "division": "first",
         "injury": lambda x: "Fatal" in x.astype(str).values,
         # numerical averages
-        "involvement_age": get_all_unique,
+        "involvement_age": get_all_values,
         "injury_severity_score": "max",
     }
     aggregated_df = (
@@ -314,6 +317,8 @@ def clean_data(df):
         .reset_index(drop=True)
     )
 
+    # after aggregation categorizing involvement_age call
+    aggregated_df = categorize_age_groups(aggregated_df)
     # --- post-aggregation ---
     #  INFO: Investigation
     # Get accidents where pedestrian_action has multiple values
@@ -752,6 +757,133 @@ def data_visualisation(df):
     plt.close()
 
 
+# age vs fatality analysis (call commented out in main)
+def analyze_age_groups(df):
+    from collections import defaultdict
+    
+    # Create a dictionary to store age ranges and their fatality rates
+    age_fatality_data = defaultdict(lambda: {'total': 0, 'fatal': 0})
+    
+    # Process each accident
+    for idx, row in df.iterrows():
+        age_ranges = row['involvement_age']  # This is already a list from your cleaning
+        is_fatal = row['accident_class'] == 'Fatal'
+        
+        for age_range in age_ranges:
+            if pd.notna(age_range):
+                age_fatality_data[age_range]['total'] += 1
+                if is_fatal:
+                    age_fatality_data[age_range]['fatal'] += 1
+    
+    # Calculate fatality rates
+    age_ranges = []
+    fatality_rates = []
+    total_counts = []
+    
+    for age_range, counts in age_fatality_data.items():
+        if counts['total'] > 0:  # Avoid division by zero
+            age_ranges.append(age_range)
+            fatality_rates.append((counts['fatal'] / counts['total']) * 100)
+            total_counts.append(counts['total'])
+    
+    # Sort by age range
+    sorted_indices = sorted(range(len(age_ranges)), 
+                          key=lambda k: int(age_ranges[k].split('-')[0]) if '-' in age_ranges[k] else 0)
+    age_ranges = [age_ranges[i] for i in sorted_indices]
+    fatality_rates = [fatality_rates[i] for i in sorted_indices]
+    total_counts = [total_counts[i] for i in sorted_indices]
+    
+    # Create visualizations
+    plt.figure(figsize=(15, 10))
+    
+    # Plot 1: Fatality rates by age group
+    plt.subplot(2, 1, 1)
+    plt.bar(age_ranges, fatality_rates, color='red', alpha=0.6)
+    plt.title('Fatality Rate by Age Group')
+    plt.xlabel('Age Group')
+    plt.ylabel('Fatality Rate (%)')
+    plt.xticks(rotation=45)
+    plt.grid(True, alpha=0.3)
+    
+    # Plot 2: Total incidents by age group
+    plt.subplot(2, 1, 2)
+    plt.bar(age_ranges, total_counts, color='blue', alpha=0.6)
+    plt.title('Total Incidents by Age Group')
+    plt.xlabel('Age Group')
+    plt.ylabel('Number of Incidents')
+    plt.xticks(rotation=45)
+    plt.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('age_analysis.png')
+    plt.close()
+    
+    # Print statistical summary
+    print("\nAge Group Analysis Summary:")
+    print("----------------------------------------")
+    for age_range, rate, count in zip(age_ranges, fatality_rates, total_counts):
+        print(f"Age Group: {age_range}")
+        print(f"Fatality Rate: {rate:.2f}%")
+        print(f"Total Incidents: {count}")
+        print("----------------------------------------")
+    
+    return age_fatality_data
+
+
+
+
+# cleaning and splitting involvement_age
+def categorize_age_groups(df):
+    def count_ages_in_groups(age_list):
+        age_groups = {
+            '0-14': 0,
+            '15-24': 0,
+            '25-59': 0,
+            '60-74': 0,
+            '75+': 0
+        }
+    
+        if not isinstance(age_list, list):
+            return pd.Series(age_groups)
+            
+        for age_range in age_list:
+            if pd.isna(age_range):
+                continue
+                
+            if age_range == 'Over 95':
+                age_groups['75+'] += 1
+                continue
+                
+            try:
+                start_age = int(age_range.split()[0])
+                
+                if start_age <= 14:
+                    age_groups['0-14'] += 1
+                elif start_age <= 24:
+                    age_groups['15-24'] += 1
+                elif start_age <= 59:
+                    age_groups['25-59'] += 1
+                elif start_age <= 74:
+                    age_groups['60-74'] += 1
+                else:
+                    age_groups['75+'] += 1
+            except (ValueError, IndexError):
+                continue
+                
+        return pd.Series(age_groups)
+    
+    #apply categorization
+    age_group_counts = df['involvement_age'].apply(count_ages_in_groups)
+    
+    #adding new columns to dataframe based on the class divide decided
+    df[['age_0_14', 'age_15_24', 'age_25_59', 'age_60_74', 'age_75_plus']] = age_group_counts
+    
+    # drop involvement_age after this 
+    df.drop('involvement_age', axis=1, inplace=True)
+
+    return df
+
+
 if __name__ == "__main__":
     # 1. Load data
     ksi_df = load_data(os.path.join(DATASET_DIR, DATA_FILE))
@@ -763,6 +895,9 @@ if __name__ == "__main__":
         # 3. Clean data
         cleaned_df = clean_data(ksi_df)
 
+        # 3.1 age analysis for deciding the class divide for age, will plot a graph, as well write fatality for each class in og dataset (0-4, 5-9, 10-14 etctetc)
+        # age_analysis = analyze_age_groups(cleaned_df)
+
         # 4. Perform data quality check
         # perform_data_quality_check(cleaned_df)
 
@@ -771,7 +906,9 @@ if __name__ == "__main__":
         # Use feature importances (of the selected classifier) for feature selection.
 
         # Export cleaned df to CSV
-        now = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime(time.time()))
+        # now = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime(time.time()))
+        # for windows user (most)
+        now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
         cleaned_df.to_csv(
             os.path.join(DATASET_DIR, f"toronto_ksi_{now}.csv"), index=False
         )
