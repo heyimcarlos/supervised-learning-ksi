@@ -548,6 +548,8 @@ def clean_data(df):
         columns_to_drop.append("time")
     if "date" in aggregated_df.columns:
         columns_to_drop.append("date")
+    if "year" in aggregated_df.columns:
+        columns_to_drop.append("year")
 
     aggregated_df.drop(columns=columns_to_drop, inplace=True)
 
