@@ -353,8 +353,6 @@ def clean_data(df):
     labels = ["Night", "Morning Rush", "Daytime", "Evening Rush", "Night"]
     aggregated_df["time_of_day"] = pd.cut(hour, bins=bins, labels=labels, ordered=False)
 
-    investigate_dataset(aggregated_df)
-
     # --- post-aggregation ---
     #  INFO: Investigation
     # Get accidents where pedestrian_action has multiple values
