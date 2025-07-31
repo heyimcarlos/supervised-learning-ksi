@@ -523,7 +523,25 @@ def clean_data(df):
         columns_to_drop.append("division")
     # aggregated_df.drop(columns=["division"], inplace=True)
 
+    #  TODO: the features below are to be visited in the future, they might be helpful.
+
+    #  NOTE: drop hood_id_new and neighbourhood_new because they are not useful for analysis.
+    if "hood_id_new" in aggregated_df.columns:
+        columns_to_drop.append("hood_id_new")
+
+    if "neighbourhood_new" in aggregated_df.columns:
+        columns_to_drop.append("neighbourhood_new")
+
     #  NOTE: drop street1 and street2 because we already X and Y coordinates.
+    if "street1" in aggregated_df.columns:
+        columns_to_drop.append("street1")
+
+    if "street2" in aggregated_df.columns:
+        columns_to_drop.append("street2")
+
+    #  NOTE: drop district because it is not useful for analysis.
+    if "district" in aggregated_df.columns:
+        columns_to_drop.append("district")
 
     # The original 'time' column is also redundant now.
     if "time" in aggregated_df.columns:
