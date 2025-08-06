@@ -4,3 +4,4 @@ venv
 *.png
 *.ipynb
 toronto_ksi*
+*copy.py

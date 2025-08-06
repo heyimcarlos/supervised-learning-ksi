@@ -297,7 +297,7 @@ def clean_data(df):
         "initial_direction": get_most_frequent,
         "vehicle_type": get_all_unique,
         "manoeuver": get_all_unique,
-        "driver_action": get_all_unique,
+        "driver_action": get_all_values,
         "driver_condition": get_all_unique,
         "pedestrian_type": get_all_unique,
         "pedestrian_action": get_all_unique,
@@ -319,6 +319,9 @@ def clean_data(df):
 
     # after aggregation categorizing involvement_age call
     aggregated_df = categorize_age_groups(aggregated_df)
+    # after aggregation categorizing driver_actions call
+    aggregated_df = categorize_driver_actions(aggregated_df)
+
     # --- post-aggregation ---
     #  INFO: Investigation
     # Get accidents where pedestrian_action has multiple values
@@ -884,6 +887,65 @@ def categorize_age_groups(df):
     return df
 
 
+
+def categorize_driver_actions(df):
+    # risk categories
+    high_risk = ['Exceeding Speed Limit']
+    
+    medium_risk = [
+        'Lost Control', 
+        'Other',
+        'Disobeyed Traffic Control',
+        'Speed too Fast For Condition',
+        'Failed to Yield Right of Way',
+        'Wrong Way on One Way Road'
+    ]
+    
+    low_risk = [
+        'Driving Properly',
+        'Improper Turn',
+        'Improper Passing',
+        'Improper Lane Change',
+        'Following too Close'
+    ]
+    
+    def count_risk_levels(action_list):
+        if not isinstance(action_list, list):
+            return pd.Series({
+                'high_risk_action_count': 0,
+                'medium_risk_action_count': 0,
+                'low_risk_action_count': 0
+            })
+            
+        counts = {
+            'high_risk_action_count': 0,
+            'medium_risk_action_count': 0,
+            'low_risk_action_count': 0
+        }
+        
+        for action in action_list:
+            if action in high_risk:
+                counts['high_risk_action_count'] += 1
+            elif action in medium_risk:
+                counts['medium_risk_action_count'] += 1
+            elif action in low_risk:
+                counts['low_risk_action_count'] += 1
+                
+        return pd.Series(counts)
+    
+    # categorization
+    risk_counts = df['driver_action'].apply(count_risk_levels)
+    
+    # add new columns to DataFrame
+    df[['high_risk_action_count', 'medium_risk_action_count', 'low_risk_action_count']] = risk_counts
+    
+    # Drop og driver_action column
+    df.drop('driver_action', axis=1, inplace=True)
+    
+    return df
+
+
+
 if __name__ == "__main__":
     # 1. Load data
     ksi_df = load_data(os.path.join(DATASET_DIR, DATA_FILE))
@@ -900,7 +962,6 @@ if __name__ == "__main__":
 
         # 4. Perform data quality check
         # perform_data_quality_check(cleaned_df)
-
         # 5. Feature engineering (or perform encoding, imputing, drop features)
         #  TODO: https://scikit-learn.org/stable/modules/feature_selection.html#tree-based-feature-selection
         # Use feature importances (of the selected classifier) for feature selection.
