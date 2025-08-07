@@ -26,9 +26,7 @@ Use pipelines class to streamline all the pre-processing transformations.
 """
 
 import os
-import tarfile
 import time
-import urllib.request
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -36,7 +34,7 @@ import seaborn as sns
 from pandas.core.base import np
 from sklearn.cluster import DBSCAN
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MultiLabelBinarizer, OneHotEncoder
+from sklearn.preprocessing import MultiLabelBinarizer
 
 DATA_FILE = "ksi.csv"
 PLOTS_DIR = "plots"
@@ -198,6 +196,9 @@ def clean_data(df):
     df_cleaned.columns = [col.lower() for col in df_cleaned.columns]
 
     # --- pre-aggregation ---
+
+    #  Remove 6 samples with accident_class 'Property Damage 0'
+    df_cleaned = df_cleaned[df_cleaned["accident_class"] != "Property Damage O"]
 
     # Convert 'DATE' to datetime
     df_cleaned["date"] = pd.to_datetime(df_cleaned["date"], errors="coerce")
@@ -1343,7 +1344,7 @@ if __name__ == "__main__":
         # investigate_dataset(ksi_df)
 
         # 3. Clean data
-        cleaned_df = clean_data(ksi_df)
+        df = clean_data(ksi_df)
 
         # 3.1 age analysis for deciding the class divide for age, will plot a graph, as well write fatality for each class in og dataset (0-4, 5-9, 10-14 etctetc)
         # age_analysis = analyze_age_groups(cleaned_df)
@@ -1354,12 +1355,26 @@ if __name__ == "__main__":
         # 5. Feature engineering (or perform encoding, imputing, drop features)
         #  TODO: https://scikit-learn.org/stable/modules/feature_selection.html#tree-based-feature-selection
         # Use feature importances (of the selected classifier) for feature selection.
-        cleaned_df = feature_engineering(cleaned_df)
-        # coordinate_clustering(cleaned_df)
+        df = feature_engineering(df)
+
+        # 6. Save the cleaned df's
+        X = df.drop(columns=["accident_class"])
+        y = df["accident_class"]
+
+        # --- THIS IS THE ONLY PLACE YOU SPLIT THE DATA ---
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.25, random_state=42, stratify=y
+        )
+
+        # --- SAVE THE FILES ---
+        X_train.to_csv("datasets/X_train.csv", index=False)
+        X_test.to_csv("datasets/X_test.csv", index=False)
+        y_train.to_csv("datasets/y_train.csv", index=False)
+        y_test.to_csv("datasets/y_test.csv", index=False)
 
         # Export cleaned df to CSV
         # now = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime(time.time()))
         # for windows user (most)
-        now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+        # now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
         # cleaned_df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi_{now}.csv"), index=False)
-        cleaned_df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi.csv"), index=False)
+        # cleaned_df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi.csv"), index=False)
