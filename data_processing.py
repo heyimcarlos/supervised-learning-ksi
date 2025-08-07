@@ -34,6 +34,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from pandas.core.base import np
+from sklearn.cluster import DBSCAN
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MultiLabelBinarizer, OneHotEncoder
 
 DATA_FILE = "ksi.csv"
 PLOTS_DIR = "plots"
@@ -49,7 +52,7 @@ def load_data(file_path: str):
     return df
 
 
-def investigate_dataset(df):
+def investigate_dataset(df: pd.DataFrame):
     """
     Performs an initial investigation of the dataset.
 
@@ -389,6 +392,18 @@ def clean_data(df):
                 )
             )
 
+    #  INFO: Impute single label features with 'Unknown' if the list is empty.
+    for unknown_feature in [
+        "driver_action",
+        "driver_condition",
+        "vehicle_type",
+        "manoeuver",
+    ]:
+        if unknown_feature in aggregated_df.columns:
+            aggregated_df[unknown_feature] = aggregated_df[unknown_feature].apply(
+                lambda x: (["Unknown"] if isinstance(x, list) and len(x) == 0 else x)
+            )
+
     # Impute accident_location with 'Unknown'
     aggregated_df.fillna({"accident_location": "Unknown"}, inplace=True)
 
@@ -551,51 +566,348 @@ def clean_data(df):
     if "year" in aggregated_df.columns:
         columns_to_drop.append("year")
 
+    if "accident_number" in aggregated_df.columns:
+        columns_to_drop.append("accident_number")
+
     aggregated_df.drop(columns=columns_to_drop, inplace=True)
 
     return aggregated_df
 
 
-def feature_engineering(df):
+def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 
-    #  INFO: feature engineering decision
-    # "strategy": "single_label" means that the feature has one label per sample
-    # "strategy": "multi_label" means that the feature can have multiple labels per sample
-    feature_engineering_decisions = {
-        "accident_location": {
-            "action": "one_hot_encode",
-            "strategy": "single_label",
-        },
-        "traffctl": {
-            "action": "one_hot_encode",
-            "strategy": "single_label",
-        },
-        "visibility": {
-            "action": "one_hot_encode",
-            "strategy": "single_label",
-        },
-        #  TODO: light can have "dark, artificial". do we wanna remove that?
-        "light": {
-            "action": "one_hot_encode",
-            "strategy": "single_label",
-        },
-        "road_surface_condition": {
-            "action": "one_hot_encode",
-            "strategy": "single_label",
-        },
-        #  TODO: injury is true/false if the accident was fatal. But isn't this the same as accident_class?
-        "injury": {
-            "action": "binarizer",
-        },
-        "pedestrian_actionl": {
-            "action": "multi_label_binarizer",
-        },
-        "involvement_type": "",
-        "involvement_age": "binning",  # TODO: binning
-        "road_class": "one-hot-encode",
-        #  i don't know
-        "district": "",
+    # INFO: pre-encoding clean up
+    # multilabel features
+    pedestrian_action_mappings = {
+        "Not Applicable": "not_applicable",
+        "Crossing with right of way": "crossing_with_right_of_way",
+        "Crossing, Pedestrian Crossover": "crossing_pedestrian_crossover",
+        "Other": "other",
+        "On Sidewalk or Shoulder": "on_sidewalk_or_shoulder",
+        "Crossing, no Traffic Control": "crossing_no_traffic_control",
+        "Running onto Roadway": "running_onto_roadway",
+        "Crossing without right of way": "crossing_without_right_of_way",
+        "Coming From Behind Parked Vehicle": "coming_from_behind_parked_vehicle",
+        "Person Getting on/off Vehicle": "person_getting_on_off_vehicle",
+        "Walking on Roadway with Traffic": "walking_on_roadway_with_traffic",
+        "Playing or Working on Highway": "playing_working_on_highway",
+        "Crossing marked crosswalk without ROW": "crossing_marked_crosswalk_without_row",
+        "Walking on Roadway Against Traffic": "walking_on_roadway_against_traffic",
+        "Pushing/Working on Vehicle": "pushing_working_on_vehicle",
+        "Person Getting on/off School Bus": "person_getting_on_off_school_bus",
     }
+
+    pedestrian_condition_mappings = {
+        "Inattentive": "inattentive",
+        "Normal": "normal",
+        "Not Applicable": "not_applicable",
+        "Medical or Physical Disability": "medical_or_physical_disability",
+        "Unknown": "unknown",
+        "Other": "other",
+        "Had Been Drinking": "alcohol_involved",
+        "Ability Impaired, Alcohol": "alcohol_involved",
+        "Ability Impaired, Alcohol Over .80": "alcohol_involved",
+        "Ability Impaired, Drugs": "ability_impaired_drugs",
+        "Fatigue": "fatigue",
+    }
+
+    pedestrian_type_mappings = {
+        "Not Applicable": "not_applicable",
+        "Vehicle turns left while ped crosses with ROW at inter.": (
+            "vehicle_turn_left_ped_with_row"
+        ),
+        "Vehicle turns left while ped crosses without ROW at inter.": (
+            "vehicle_turn_left_ped_without_row"
+        ),
+        "Vehicle turns right while ped crosses with ROW at inter.": (
+            "vehicle_turn_right_ped_with_row"
+        ),
+        "Vehicle turns right while ped crosses without ROW at inter.": (
+            "vehicle_turn_right_ped_without_row"
+        ),
+        "Vehicle is going straight thru inter.while ped cross with ROW": (
+            "vehicle_straight_ped_with_row"
+        ),
+        "Vehicle is going straight thru inter.while ped cross without ROW": (
+            "vehicle_straight_ped_without_row"
+        ),
+        "Pedestrian hit a PXO/ped. Mid-block signal": "pedestrian_hit_on_roadside",
+        "Pedestrian hit on sidewalk or shoulder": "pedestrian_hit_on_roadside",
+        "Pedestrian hit at mid-block": "pedestrian_hit_on_roadside",
+        "Pedestrian hit at private driveway": "pedestrian_hit_on_driveway",
+        "Pedestrian involved in a collision with transit vehicle anywhere along roadway": (
+            "pedestrian_collision_transit_vehicle"
+        ),
+        "Vehicle hits the pedestrian walking or running out from between parked vehicles at mid-block": (
+            "vehicle_hits_pedestrian_between_parked_vehicles"
+        ),
+        "Other / Undefined": "other_undefined",
+        "Pedestrian hit at parking lot": "pedestrian_hit_on_parking_lot",
+        "Unknown": "unknown",
+    }
+
+    cyclist_type_mappings = {
+        "Motorist turns right at non-signal Inter.(stop, yield, no cont.,and dwy) and strikes cyclist.": (
+            "motorist_action_right_turn"
+        ),
+        "Motorist turning right on green or amber at signalized intersection strikes cyclist.": (
+            "motorist_action_right_turn"
+        ),
+        "Motorist turning right on red at signalized intersection strikes cyclist.": (
+            "motorist_action_right_turn"
+        ),
+        "Cyclist and Driver travelling in same direction. One vehicle rear-ended the other.": (
+            "collision_same_direction"
+        ),
+        "Cyclist and Driver travelling in same direction. One vehicle sideswipes the other.": (
+            "collision_same_direction"
+        ),
+        "Insufficient information (to determine cyclist crash type).": "insufficient_info",
+        "Cyclist without ROW rides into path of motorist at inter, lnwy, dwy-Cyclist not turn.": (
+            "cyclist_action_failed_to_yield"
+        ),
+        "Not Applicable": "not_applicable",
+        "Cyclist turned left across motorists path.": "cyclist_action_improper_turn",
+        "Cyclist turns right across motorists path": "cyclist_action_improper_turn",
+        "Cyclist makes u-turn in-front of driver.": "cyclist_action_improper_turn",
+        "Motorist makes u-turn in-front of cyclist.": "motorist_action_u_turn",
+        "Motorist turned left across cyclists path.": "motorist_action_left_turn",
+        "Cyclist strikes a parked vehicle.": "collision_stationary_object",
+        "Cyclist falls off bike - no contact with motorist.": "cyclist_action_loses_control",
+        "Motorist loses control and strikes cyclist.": "motorist_action_loses_control",
+        "Cyclist struck opened vehicle door": "collision_stationary_object",
+        "Motorist without ROW drives into path of cyclist at inter, lnwy, dwy-Driver not turn.": (
+            "motorist_action_failed_to_yield"
+        ),
+        "Motorist reversing struck cyclist.": "motorist_action_reversing",
+        "Cyclist loses control and strikes object (pole, ttc track)": "cyclist_action_loses_control",
+        "Cyclist strikes pedestrian.": "collision_stationary_object",
+        "Cyclist struck at PXO(cyclist either travel in same dir. as veh. or ride across xwalk)": (
+            "cyclist_action_roadside_interaction"
+        ),
+        "Cyclist rode off sidewalk into road at midblock.": "cyclist_action_roadside_interaction",
+    }
+
+    cyclist_condition_mappings = {
+        "Not Applicable": "not_applicable",
+        "Had Been Drinking": "alcohol_involved",
+        "Unknown": "unknown",
+        "Normal": "normal",
+        "Inattentive": "inattentive",
+        "Ability Impaired, Alcohol": "alcohol_involved",
+        "Other": "other",
+        "Ability Impaired, Alcohol Over .80": "alcohol_involved",
+        "Medical or Physical Disability": "medical_or_physical_disability",
+        "Ability Impaired, Drugs": "ability_impaired_drugs",
+        "Fatigue": "fatigue",
+    }
+
+    cyclist_action_mappings = {
+        "Not Applicable": "not_applicable",
+        "Improper Turn": "improper_maneuver",
+        "Improper Lane Change": "improper_maneuver",
+        "Improper Passing": "improper_maneuver",
+        "Disobeyed Traffic Control": "disregard_traffic_laws",
+        "Failed to Yield Right of Way": "disregard_traffic_laws",
+        "Wrong Way on One Way Road": "disregard_traffic_laws",
+        "Driving Properly": "driving_properly",
+        "Other": "other",
+        "Lost control": "reckless_operation",
+        "Speed too Fast For Condition": "reckless_operation",
+        "Following too Close": "reckless_operation",
+    }
+
+    driver_action_mappings = {
+        "Driving Properly": "driving_properly",
+        "Failed to Yield Right of Way": "failed_to_yield",
+        "Lost control": "reckless_operation",
+        "Improper Turn": "improper_maneuver",
+        "Improper Passing": "improper_maneuver",
+        "Improper Lane Change": "improper_maneuver",
+        "Other": "other",
+        "Disobeyed Traffic Control": "disregard_traffic_laws",
+        "Following too Close": "reckless_operation",
+        "Exceeding Speed Limit": "reckless_operation",
+        "Speed too Fast For Condition": "reckless_operation",
+        "Unknown": "unknown",
+        "Speed too Slow": "reckless_operation",
+        "Wrong Way on One Way Road": "disregard_traffic_laws",
+    }
+
+    driver_condition_mappings = {
+        "Normal": "normal",
+        "Inattentive": "inattentive",
+        "Unknown": "unknown",
+        "Medical or Physical Disability": "medical_or_physical_disability",
+        "Had Been Drinking": "alcohol_involved",
+        "Other": "other",
+        "Ability Impaired, Alcohol Over .08": "alcohol_involved",
+        "Ability Impaired, Alcohol": "alcohol_involved",
+        "Fatigue": "fatigue",
+        "Ability Impaired, Drugs": "ability_impaired_drugs",
+    }
+
+    vehicle_type_mappings = {
+        "Automobile, Station Wagon": "passenger_vehicle",
+        "Passenger Van": "passenger_vehicle",
+        "Taxi": "taxi",
+        "Pick Up Truck": "truck",
+        "Truck - Closed (Blazer, etc)": "truck",
+        "Truck-Tractor": "truck",
+        "Truck - Dump": "truck",
+        "Truck (other)": "truck",
+        "Truck - Car Carrier": "truck",
+        "Truck - Tank": "truck",
+        "Truck - Open": "truck",
+        "Delivery Van": "truck",
+        "Tow Truck": "truck",
+        "Municipal Transit Bus (TTC)": "bus",
+        "Bus (Other) (Go Bus, Gray Coa": "bus",
+        "Intercity Bus": "bus",
+        "School Bus": "bus",
+        "Other Emergency Vehicle": "emergency_vehicle",
+        "Police Vehicle": "emergency_vehicle",
+        "Ambulance": "emergency_vehicle",
+        "Fire Vehicle": "emergency_vehicle",
+        "Motorcycle": "motorcycle_moped",
+        "Moped": "motorcycle_moped",
+        "Construction Equipment": "off_road_or_construction",
+        "Off Road - 2 Wheels": "off_road_or_construction",
+        "Off Road - 4 Wheels": "off_road_or_construction",
+        "Off Road - Other": "off_road_or_construction",
+        "Bicycle": "bicycle",
+        "Street Car": "street_car",
+        "Other": "other_unknown",
+        "Unknown": "unknown",
+        "Rickshaw": "other_unknown",
+    }
+
+    manoeuver_mappings = {
+        "Going Ahead": "going_ahead",
+        "Overtaking": "going_ahead",
+        "Turning Left": "turning",
+        "Turning Right": "turning",
+        "Making U Turn": "turning",
+        "Changing Lanes": "position_change",
+        "Merging": "position_change",
+        "Pulling Away from Shoulder or Curb": "position_change",
+        "Pulling Onto Shoulder or towardCurb": "position_change",
+        "Reversing": "position_change",
+        "Slowing or Stopping": "stationary_or_slowing",
+        "Stopped": "stationary_or_slowing",
+        "Parked": "stationary_or_slowing",
+        "Disabled": "stationary_or_slowing",
+        "Other": "other_unknown",
+        "Unknown": "other_unknown",
+    }
+
+    mappings = [
+        ("pedestrian_action", pedestrian_action_mappings),
+        ("pedestrian_condition", pedestrian_condition_mappings),
+        ("pedestrian_type", pedestrian_type_mappings),
+        ("cyclist_action", cyclist_action_mappings),
+        ("cyclist_condition", cyclist_condition_mappings),
+        ("cyclist_type", cyclist_type_mappings),
+        ("driver_action", driver_action_mappings),
+        ("driver_condition", driver_condition_mappings),
+        ("vehicle_type", vehicle_type_mappings),
+        ("manoeuver", manoeuver_mappings),
+    ]
+
+    for col, mapping in mappings:
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda actions: [mapping.get(action, "other") for action in actions]
+            )
+
+    for col, _ in mappings:
+        # print(f"Encoding multi-label column: {col}")
+        if col in df.columns:
+            mlb = MultiLabelBinarizer()
+
+            # Fit and transform the column
+            encoded_data = mlb.fit_transform(df[col])
+
+            # Create a new DataFrame with the encoded columns
+            encoded_df = pd.DataFrame(
+                encoded_data,
+                columns=[f"{col}_{c.lower().replace(' ', '_')}" for c in mlb.classes_],
+            )
+
+            # Join the new DataFrame with the original one
+            df = df.join(encoded_df)
+
+            # Drop the original multi-label column
+            df = df.drop(col, axis=1)
+
+    # INFO: single-label features
+    single_label = [
+        "impact_type",
+        "initial_direction",
+        "road_surface_condition",
+        # "light",
+        "traffctl",
+        "visibility",
+        "road_class",
+        "season",
+        "time_of_day",
+        "accident_location",
+    ]
+
+    #  INFO: add manual mappings for light conditions
+    light_mappings = {
+        "Daylight": "daylight",
+        "Dark": "dark",
+        "Dark, artificial": "dark_artificial",
+        "Dawn": "dawn",
+        "Dawn, artificial": "dawn_artificial",
+        "Dusk": "dusk",
+        "Dusk, artificial": "dusk_artificial",
+        "Other": "other",
+        "Unknown": "unknown",
+    }
+    df["light"] = df["light"].map(light_mappings)
+    df = pd.get_dummies(
+        df,
+        columns=["light"],
+        prefix="light",
+        prefix_sep="_",
+        dtype="int",
+    )
+
+    # one-hot encode single-label features
+    df = pd.get_dummies(
+        df,
+        columns=single_label,
+        prefix=single_label,
+        prefix_sep="_",
+        drop_first=True,
+        dtype="int",
+    )
+
+    #  INFO: New features
+
+    coords = df[["x", "y"]]
+    # eps: max distance between two samples
+    #  INFO: check the coordinate_clustering function to determine the best eps value.
+    db = DBSCAN(eps=300, min_samples=10).fit(coords)
+    # -1 indicates noise (outliers not in any cluster)
+    df["accident_hotspot_cluster"] = db.labels_
+
+    # INFO: bad weather and low light
+    df["bad_weather_and_dark"] = (
+        (
+            (df["road_surface_condition_Wet"] == 1)
+            | (df["road_surface_condition_Ice"] == 1)
+        )
+        & (df["light_dark"] == 1)
+    ).astype(int)
+
+    # # INFO: Reckless at intersection
+    df["reckless_at_intersection"] = (
+        (df["driver_action_reckless_operation"] == 1)
+        & (df["accident_location_Intersection Related"] == 1)
+    ).astype(int)
 
     return df
 
@@ -666,6 +978,34 @@ def perform_data_quality_check(df_cleaned):
     print(
         f"Do all 'Fatal' accident_numbers have at least one 'Fatal' INJURY? {all_fatal_acclass_have_fatal_injury}"
     )
+
+
+def coordinate_clustering(df):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from sklearn.neighbors import NearestNeighbors
+
+    # Assuming 'df' is your DataFrame
+    coords = df[["x", "y"]]
+
+    # 1. Calculate the distance to the 10th nearest neighbor for each point
+    # (The value for n_neighbors should be the same as your min_samples)
+    k = 10
+    neighbors = NearestNeighbors(n_neighbors=k)
+    neighbors_fit = neighbors.fit(coords)
+    distances, indices = neighbors_fit.kneighbors(coords)
+
+    # 2. Sort the distances and plot them
+    distances = np.sort(distances, axis=0)
+    distances = distances[:, 1]  # We only need the distance to the k-th neighbor
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(distances)
+    plt.title(f"K-Distance Graph (k={k})")
+    plt.xlabel("Points sorted by distance")
+    plt.ylabel(f"Distance to {k}-th nearest neighbor")
+    plt.grid(True)
+    plt.show()
 
 
 # Data visualization
@@ -1014,11 +1354,12 @@ if __name__ == "__main__":
         # 5. Feature engineering (or perform encoding, imputing, drop features)
         #  TODO: https://scikit-learn.org/stable/modules/feature_selection.html#tree-based-feature-selection
         # Use feature importances (of the selected classifier) for feature selection.
+        cleaned_df = feature_engineering(cleaned_df)
+        # coordinate_clustering(cleaned_df)
 
         # Export cleaned df to CSV
         # now = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime(time.time()))
         # for windows user (most)
         now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-        cleaned_df.to_csv(
-            os.path.join(DATASET_DIR, f"toronto_ksi_{now}.csv"), index=False
-        )
+        # cleaned_df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi_{now}.csv"), index=False)
+        cleaned_df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi.csv"), index=False)
