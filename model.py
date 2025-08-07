@@ -184,7 +184,9 @@ def clean_data(df):
         "AG_DRIV": "aggressive_driving",
         "INITDIR": "initial_direction",
         "NEIGHBOURHOOD_158": "neighbourhood_new",
+        "HOOD_158": "hood_id_new",
         "NEIGHBOURHOOD_140": "neighbourhood_old",
+        "HOOD_140": "hood_id_old",
     }
 
     # Apply renames
@@ -248,6 +250,9 @@ def clean_data(df):
     def get_all_values(series):
         return list(series.dropna())
 
+    def get_all_values(series):
+        return list(series.dropna())
+
     #  TODO: Aggregation strategies
     # - Group involvement ages into different bins. Maybe we just use the actually involved? like the drivers?
     aggregation_dict = {
@@ -270,9 +275,9 @@ def clean_data(df):
         "visibility": "first",
         "light": "first",
         "road_surface_condition": "first",
-        "hood_158": "first",
+        "hood_id_new": "first",
         "neighbourhood_new": "first",
-        "hood_140": "first",
+        "hood_id_old": "first",
         "neighbourhood_old": "first",
         "accident_class": "first",
         # Person-level counts/booleans
@@ -306,9 +311,11 @@ def clean_data(df):
         "cyclist_action": get_all_unique,
         "cyclist_condition": get_all_unique,
         "division": "first",
-        "injury": lambda x: "Fatal" in x.astype(str).values,
+        #  NOTE: adds data leakage.
+        # "injury": lambda x: "Fatal" in x.astype(str).values,
         # numerical averages
         "involvement_age": get_all_values,
+
         "injury_severity_score": "max",
     }
     aggregated_df = (
@@ -321,6 +328,37 @@ def clean_data(df):
     aggregated_df = categorize_age_groups(aggregated_df)
     # after aggregation categorizing driver_actions call
     aggregated_df = categorize_driver_actions(aggregated_df)
+
+
+    #  NOTE: add is_weekend feature
+    aggregated_df["is_weekend"] = (
+        aggregated_df["date"].dt.dayofweek.isin([5, 6]).astype(int)
+    )
+
+    #  NOTE: add season feature
+    month_to_season = {
+        12: "Winter",
+        1: "Winter",
+        2: "Winter",
+        3: "Spring",
+        4: "Spring",
+        5: "Spring",
+        6: "Summer",
+        7: "Summer",
+        8: "Summer",
+        9: "Fall",
+        10: "Fall",
+        11: "Fall",
+    }
+    aggregated_df["season"] = aggregated_df["date"].dt.month.map(month_to_season)
+
+    #  NOTE: Create the 'time_of_day' feature
+    hour = aggregated_df["time"] // 100  # Convert time to hour (e.g., 1450 -> 14)
+    # Bins: Night(0-6), Morning(7-9), Day(10-15), Evening(16-18), Night(19-23)
+    bins = [-1, 6, 9, 15, 18, 23]
+    labels = ["Night", "Morning Rush", "Daytime", "Evening Rush", "Night"]
+    aggregated_df["time_of_day"] = pd.cut(hour, bins=bins, labels=labels, ordered=False)
+
 
     # --- post-aggregation ---
     #  INFO: Investigation
@@ -447,17 +485,80 @@ def clean_data(df):
         "Fatal"
     )
 
-    # --- Drop features ---
+    #  NOTE:
+    # You wanted to create features indicating the main involvement ages (e.g., "driver and pedestrian"). With these count-based features, you don't need to create new flags. The model can learn these interactions directly.
+    # For example, when your model sees a row where pedestrian = 1, automobile = 1, and age_25_59 = 2, it has all the information it needs to learn the pattern for an accident involving a pedestrian and a driver in the 25-59 age range. The combination of your boolean involvement types (pedestrian, cyclist, etc.) and your numerical age counts is extremely effective.
 
-    # Drop offset because it is not useful for analysis and it's missing 79% of the time.
-    aggregated_df.drop(columns=["offset"], inplace=True)
+    # --- Drop features ---
+    columns_to_drop = []
+
+    # Drop `offset ` because it is not useful for analysis and it's missing 79% of the time.
+    if "offset" in aggregated_df.columns:
+        columns_to_drop.append("offset")
+    # aggregated_df.drop(columns=["offset"], inplace=True)
+
+    #  NOTE: injury_severity_score adds data leakage, we need to remove it, to avoid our model generalizing that value 4 = fatal.
+    if "injury_severity_score" in aggregated_df.columns:
+        columns_to_drop.append("injury_severity_score")
+    # aggregated_df.drop(columns=["injury_severity_score"], inplace=True)
+
+    #  NOTE: drop involvement_type because we already have a list of boolean features, rendering it redundant.
+    if "involvement_type" in aggregated_df.columns:
+        columns_to_drop.append("involvement_type")
+    # aggregated_df.drop(columns=["involment_type"], inplace=True)
 
     # INFO: Drop pedestrian_type because it's a detail of how the pedestrian was involved (we cannot use a sentence.
     # decided to keep it for now, since we multilabel imputed.
     # aggregated_df.drop(columns=["pedestrian_type"], inplace=True)
 
-    # drop division because it means the toronto police division, which is not useful for analysis.
-    aggregated_df.drop(columns=["division"], inplace=True)
+    #  NOTE: drop latitude and longitude because we already have x and y (in cardinal distance) coordinates.
+    if "latitude" in aggregated_df.columns:
+        columns_to_drop.append("latitude")
+
+    if "longitude" in aggregated_df.columns:
+        columns_to_drop.append("longitude")
+
+    #  NOTE: drop neighbourhood_old and hood_id_old because they use an older naming system.
+    if "neighbourhood_old" in aggregated_df.columns:
+        columns_to_drop.append("neighbourhood_old")
+
+    if "hood_id_old" in aggregated_df.columns:
+        columns_to_drop.append("hood_id_old")
+
+    # NOTE: drop division because it means the toronto police division, which is not useful for analysis.
+    if "division" in aggregated_df.columns:
+        columns_to_drop.append("division")
+    # aggregated_df.drop(columns=["division"], inplace=True)
+
+    #  TODO: the features below are to be visited in the future, they might be helpful.
+
+    #  NOTE: drop hood_id_new and neighbourhood_new because they are not useful for analysis.
+    if "hood_id_new" in aggregated_df.columns:
+        columns_to_drop.append("hood_id_new")
+
+    if "neighbourhood_new" in aggregated_df.columns:
+        columns_to_drop.append("neighbourhood_new")
+
+    #  NOTE: drop street1 and street2 because we already X and Y coordinates.
+    if "street1" in aggregated_df.columns:
+        columns_to_drop.append("street1")
+
+    if "street2" in aggregated_df.columns:
+        columns_to_drop.append("street2")
+
+    #  NOTE: drop district because it is not useful for analysis.
+    if "district" in aggregated_df.columns:
+        columns_to_drop.append("district")
+
+    # The original 'time' column is also redundant now.
+    if "time" in aggregated_df.columns:
+        columns_to_drop.append("time")
+    if "date" in aggregated_df.columns:
+        columns_to_drop.append("date")
+    if "year" in aggregated_df.columns:
+        columns_to_drop.append("year")
+
+    aggregated_df.drop(columns=columns_to_drop, inplace=True)
 
     return aggregated_df
 
@@ -763,64 +864,67 @@ def data_visualisation(df):
 # age vs fatality analysis (call commented out in main)
 def analyze_age_groups(df):
     from collections import defaultdict
-    
+
     # Create a dictionary to store age ranges and their fatality rates
-    age_fatality_data = defaultdict(lambda: {'total': 0, 'fatal': 0})
-    
+    age_fatality_data = defaultdict(lambda: {"total": 0, "fatal": 0})
+
     # Process each accident
     for idx, row in df.iterrows():
-        age_ranges = row['involvement_age']  # This is already a list from your cleaning
-        is_fatal = row['accident_class'] == 'Fatal'
-        
+        age_ranges = row["involvement_age"]  # This is already a list from your cleaning
+        is_fatal = row["accident_class"] == "Fatal"
+
         for age_range in age_ranges:
             if pd.notna(age_range):
-                age_fatality_data[age_range]['total'] += 1
+                age_fatality_data[age_range]["total"] += 1
                 if is_fatal:
-                    age_fatality_data[age_range]['fatal'] += 1
-    
+                    age_fatality_data[age_range]["fatal"] += 1
+
     # Calculate fatality rates
     age_ranges = []
     fatality_rates = []
     total_counts = []
-    
+
+
     for age_range, counts in age_fatality_data.items():
-        if counts['total'] > 0:  # Avoid division by zero
+        if counts["total"] > 0:  # Avoid division by zero
             age_ranges.append(age_range)
-            fatality_rates.append((counts['fatal'] / counts['total']) * 100)
-            total_counts.append(counts['total'])
-    
+            fatality_rates.append((counts["fatal"] / counts["total"]) * 100)
+            total_counts.append(counts["total"])
+
     # Sort by age range
-    sorted_indices = sorted(range(len(age_ranges)), 
-                          key=lambda k: int(age_ranges[k].split('-')[0]) if '-' in age_ranges[k] else 0)
+    sorted_indices = sorted(
+        range(len(age_ranges)),
+        key=lambda k: int(age_ranges[k].split("-")[0]) if "-" in age_ranges[k] else 0,
+    )
     age_ranges = [age_ranges[i] for i in sorted_indices]
     fatality_rates = [fatality_rates[i] for i in sorted_indices]
     total_counts = [total_counts[i] for i in sorted_indices]
-    
+
     # Create visualizations
     plt.figure(figsize=(15, 10))
-    
+
     # Plot 1: Fatality rates by age group
     plt.subplot(2, 1, 1)
-    plt.bar(age_ranges, fatality_rates, color='red', alpha=0.6)
-    plt.title('Fatality Rate by Age Group')
-    plt.xlabel('Age Group')
-    plt.ylabel('Fatality Rate (%)')
+    plt.bar(age_ranges, fatality_rates, color="red", alpha=0.6)
+    plt.title("Fatality Rate by Age Group")
+    plt.xlabel("Age Group")
+    plt.ylabel("Fatality Rate (%)")
     plt.xticks(rotation=45)
     plt.grid(True, alpha=0.3)
-    
+
     # Plot 2: Total incidents by age group
     plt.subplot(2, 1, 2)
-    plt.bar(age_ranges, total_counts, color='blue', alpha=0.6)
-    plt.title('Total Incidents by Age Group')
-    plt.xlabel('Age Group')
-    plt.ylabel('Number of Incidents')
+    plt.bar(age_ranges, total_counts, color="blue", alpha=0.6)
+    plt.title("Total Incidents by Age Group")
+    plt.xlabel("Age Group")
+    plt.ylabel("Number of Incidents")
     plt.xticks(rotation=45)
     plt.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
-    plt.savefig('age_analysis.png')
+    plt.savefig("age_analysis.png")
     plt.close()
-    
+
     # Print statistical summary
     print("\nAge Group Analysis Summary:")
     print("----------------------------------------")
@@ -829,9 +933,9 @@ def analyze_age_groups(df):
         print(f"Fatality Rate: {rate:.2f}%")
         print(f"Total Incidents: {count}")
         print("----------------------------------------")
-    
-    return age_fatality_data
 
+
+    return age_fatality_data
 
 
 
@@ -839,111 +943,65 @@ def analyze_age_groups(df):
 def categorize_age_groups(df):
     def count_ages_in_groups(age_list):
         age_groups = {
-            '0-14': 0,
-            '15-24': 0,
-            '25-59': 0,
-            '60-74': 0,
-            '75+': 0
+            "0-14": 0,
+            "15-24": 0,
+            "25-59": 0,
+            "60-74": 0,
+            "75+": 0,
+            "total": 0,
         }
-    
+
         if not isinstance(age_list, list):
             return pd.Series(age_groups)
-            
+
         for age_range in age_list:
             if pd.isna(age_range):
                 continue
-                
-            if age_range == 'Over 95':
-                age_groups['75+'] += 1
+
+            if age_range == "Over 95":
+                age_groups["75+"] += 1
                 continue
-                
+
             try:
+
                 start_age = int(age_range.split()[0])
-                
+                age_groups["total"] += 1
+
                 if start_age <= 14:
-                    age_groups['0-14'] += 1
+                    age_groups["0-14"] += 1
                 elif start_age <= 24:
-                    age_groups['15-24'] += 1
+                    age_groups["15-24"] += 1
                 elif start_age <= 59:
-                    age_groups['25-59'] += 1
+                    age_groups["25-59"] += 1
                 elif start_age <= 74:
-                    age_groups['60-74'] += 1
+                    age_groups["60-74"] += 1
                 else:
-                    age_groups['75+'] += 1
+                    age_groups["75+"] += 1
             except (ValueError, IndexError):
                 continue
-                
+
         return pd.Series(age_groups)
-    
-    #apply categorization
-    age_group_counts = df['involvement_age'].apply(count_ages_in_groups)
-    
-    #adding new columns to dataframe based on the class divide decided
-    df[['age_0_14', 'age_15_24', 'age_25_59', 'age_60_74', 'age_75_plus']] = age_group_counts
-    
-    # drop involvement_age after this 
-    df.drop('involvement_age', axis=1, inplace=True)
+
+    # apply categorization
+    age_group_counts = df["involvement_age"].apply(count_ages_in_groups)
+
+    # adding new columns to dataframe based on the class divide decided
+    df[
+        [
+            "age_0_14",
+            "age_15_24",
+            "age_25_59",
+            "age_60_74",
+            "age_75_plus",
+            #  NOTE: Include "total_involved" to keep track of total individuals involved in the accident
+            "total_involved",
+        ]
+    ] = age_group_counts
+
+    # drop involvement_age after this
+    df.drop("involvement_age", axis=1, inplace=True)
 
     return df
-
-
-
-def categorize_driver_actions(df):
-    # risk categories
-    high_risk = ['Exceeding Speed Limit']
-    
-    medium_risk = [
-        'Lost Control', 
-        'Other',
-        'Disobeyed Traffic Control',
-        'Speed too Fast For Condition',
-        'Failed to Yield Right of Way',
-        'Wrong Way on One Way Road'
-    ]
-    
-    low_risk = [
-        'Driving Properly',
-        'Improper Turn',
-        'Improper Passing',
-        'Improper Lane Change',
-        'Following too Close'
-    ]
-    
-    def count_risk_levels(action_list):
-        if not isinstance(action_list, list):
-            return pd.Series({
-                'high_risk_action_count': 0,
-                'medium_risk_action_count': 0,
-                'low_risk_action_count': 0
-            })
-            
-        counts = {
-            'high_risk_action_count': 0,
-            'medium_risk_action_count': 0,
-            'low_risk_action_count': 0
-        }
-        
-        for action in action_list:
-            if action in high_risk:
-                counts['high_risk_action_count'] += 1
-            elif action in medium_risk:
-                counts['medium_risk_action_count'] += 1
-            elif action in low_risk:
-                counts['low_risk_action_count'] += 1
-                
-        return pd.Series(counts)
-    
-    # categorization
-    risk_counts = df['driver_action'].apply(count_risk_levels)
-    
-    # add new columns to DataFrame
-    df[['high_risk_action_count', 'medium_risk_action_count', 'low_risk_action_count']] = risk_counts
-    
-    # Drop og driver_action column
-    df.drop('driver_action', axis=1, inplace=True)
-    
-    return df
-
 
 
 if __name__ == "__main__":
