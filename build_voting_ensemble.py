@@ -3,7 +3,7 @@ import os
 import joblib
 import pandas as pd
 from sklearn.ensemble import VotingClassifier
-from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 DATASET_DIR = "datasets"
 
@@ -30,6 +30,7 @@ estimators = [
 voting_clf = VotingClassifier(
     estimators=estimators,
     voting="soft",  # Use the probabilities from your fine-tuned models
+    weights=[0.3, 0.7],
 )
 
 # --- Fit and Evaluate the Final Ensemble ---
@@ -39,5 +40,10 @@ voting_clf.fit(X_train, y_train)
 # Evaluate on the test set
 y_pred = voting_clf.predict(X_test)
 
+print(f"Accuracy Score: {accuracy_score(y_test, y_pred):.4f}")
+
 print("Final Voting Classifier Performance:")
 print(classification_report(y_test, y_pred))
+
+print("confusion matrix:")
+print(confusion_matrix(y_test, y_pred))

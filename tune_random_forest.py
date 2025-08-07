@@ -29,8 +29,8 @@ pipeline = Pipeline(
 params_grid = {
     "smote__k_neighbors": [3, 5, 7],
     "classifier__n_estimators": range(25, 3001, 25),
-    "classifier__max_depth": range(8, 2001, 5),
-    "classifier__min_samples_leaf": [1, 2, 4],
+    "classifier__max_depth": [5, 8, 10],
+    "classifier__min_samples_leaf": [10, 20, 30, 40],
     "classifier__max_features": ["sqrt", "log2"],
 }
 
@@ -51,7 +51,7 @@ random_search = RandomizedSearchCV(
 )
 random_search.fit(X_train, y_train)
 print("Best parameters found: ", random_search.best_params_)
-joblib.dump(random_search.best_estimator_, "best_random_forest_model2.pkl")
+joblib.dump(random_search.best_estimator_, "models/best_random_forest.pkl")
 
 
 # grid_search = GridSearchCV(

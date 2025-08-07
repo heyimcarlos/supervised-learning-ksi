@@ -64,7 +64,7 @@ grid_search.fit(X_train, y_train)
 print("Best parameters found: ", grid_search.best_params_)
 joblib.dump(
     grid_search.best_estimator_,
-    "best_logistic_regression_model.pkl",
+    "models/best_logistic_regression.pkl",
 )
 
 # Look at the recall for the "Fatal" class: 0.65. This is a massive improvement over your previous models. It means you are now correctly identifying 65% of all fatal accidents, up from less than 20% before.

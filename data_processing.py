@@ -1373,8 +1373,7 @@ if __name__ == "__main__":
         y_test.to_csv("datasets/y_test.csv", index=False)
 
         # Export cleaned df to CSV
-        # now = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime(time.time()))
+        now = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime(time.time()))
         # for windows user (most)
-        # now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-        # cleaned_df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi_{now}.csv"), index=False)
-        # cleaned_df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi.csv"), index=False)
+        now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+        df.to_csv(os.path.join(DATASET_DIR, f"toronto_ksi_{now}.csv"), index=False)
