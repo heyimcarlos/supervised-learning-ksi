@@ -25,15 +25,19 @@ pipeline = Pipeline(
     ]
 )
 
+
+#  WARNING: runs
+# 1: Best parameters found:  {'smote__k_neighbors': 3, 'classifier__subsample': 0.8, 'classifier__n_estimators': 50, 'classifier__min_samples_split': 20, 'classifier__min_samples_leaf': 15, 'classifier__max_features': 'sqrt', 'classifier__max_depth': 3, 'classifier__learning_rate': 0.01} | recall -> 0.39
+# 2: Best parameters found:  {'smote__k_neighbors': 5, 'classifier__subsample': 1.0, 'classifier__n_estimators': 2875, 'classifier__min_samples_split': 30, 'classifier__min_samples_leaf': 15, 'classifier__max_features': None, 'classifier__max_depth': 3, 'classifier__learning_rate': 0.1}
 params_grid = {
     "smote__k_neighbors": [3, 5, 7],
-    "classifier__n_estimators": range(50, 201, 25),
-    "classifier__max_depth": [3, 5, 7, 9, 11],
-    "classifier__learning_rate": [0.01, 0.05, 0.1, 0.15, 0.2],
-    "classifier__min_samples_split": [20, 30, 40],  # Increased from [10, 20, 30]
-    "classifier__min_samples_leaf": [10, 15, 20],   # Increased from [5, 10, 15, 20]
+    "classifier__n_estimators": range(50, 3001, 25),
+    "classifier__max_depth": [3, 5],
+    "classifier__learning_rate": [0.01, 0.1],
+    "classifier__min_samples_split": [5, 10, 20, 30],
+    "classifier__min_samples_leaf": [10, 15, 20],
     "classifier__subsample": [0.8, 0.9, 1.0],
-    "classifier__max_features": ["sqrt", "log2", None],
+    "classifier__max_features": ["sqrt", None],
 }
 
 cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
@@ -71,9 +75,9 @@ best_model = random_search.best_estimator_
 y_pred = best_model.predict(X_test)
 
 # Print evaluation metrics
-print("\n" + "="*50)
+print("\n" + "=" * 50)
 print("GRADIENT BOOSTING CLASSIFIER TEST RESULTS")
-print("="*50)
+print("=" * 50)
 
 print("\nConfusion Matrix:")
 print(confusion_matrix(y_test, y_pred))
@@ -83,7 +87,9 @@ print(classification_report(y_test, y_pred))
 
 # Calculate and display recall for Fatal class specifically
 from sklearn.metrics import recall_score
+
 fatal_recall = recall_score(y_test, y_pred, pos_label="Fatal")
 print(f"\nFatal Class Recall: {fatal_recall:.4f}")
-print(f"This means the model correctly identifies {fatal_recall*100:.2f}% of all fatal accidents")
-
+print(
+    f"This means the model correctly identifies {fatal_recall*100:.2f}% of all fatal accidents"
+)
