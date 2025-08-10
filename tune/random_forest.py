@@ -13,9 +13,6 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 
-# import sklearn
-# print(sklearn.__version__)
-
 DATASET_DIR = "datasets"
 
 X_train = pd.read_csv(os.path.join(DATASET_DIR, "X_train.csv"))
