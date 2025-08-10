@@ -49,3 +49,7 @@ print(classification_report(y_test, y_pred))
 
 print("confusion matrix:")
 print(confusion_matrix(y_test, y_pred))
+
+
+# Save the final voting classifier model
+joblib.dump(voting_clf, "models/voting_classifier.pkl")
