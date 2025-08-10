@@ -20,19 +20,19 @@ y_test = pd.read_csv(
 model_rf = joblib.load("models/best_random_forest.pkl")
 model_lr = joblib.load("models/best_logistic_regression.pkl")
 # model_gb = joblib.load("models/best_gradient_boosting.pkl")
-#model_svm = joblib.load("models/best_svm.pkl")
+# model_svm = joblib.load("models/best_svm.pkl")
 
 estimators = [
-    ("random_forest", model_rf),
+    # ("random_forest", model_rf),
     ("logistic_regression", model_lr),
-    #("svm", model_svm),
+    # ("svm", model_svm),
     # ("gradient_boosting", model_gb),
 ]
 
 voting_clf = VotingClassifier(
     estimators=estimators,
     voting="soft",  # Use the probabilities from your fine-tuned models
-    weights=[0.2, 0.4, 0.4],
+    # weights=[0.3, 0.7],
 )
 
 # --- Fit and Evaluate the Final Ensemble ---

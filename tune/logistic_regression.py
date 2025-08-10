@@ -21,7 +21,11 @@ pipeline = Pipeline(
         ("scaler", StandardScaler()),
         (
             "classifier",
-            LogisticRegression(random_state=42, max_iter=2500, class_weight="balanced"),
+            LogisticRegression(
+                random_state=42,
+                max_iter=5000,
+                class_weight="balanced",
+            ),
         ),
     ]
 )
@@ -29,18 +33,13 @@ pipeline = Pipeline(
 # adding the L1 penalty is a great idea because it provides a form of automatic feature selection.
 # L2 Penalty (Ridge): Shrinks the coefficients of less important features closer to zero, but rarely to exactly zero.
 # L1 Penalty (Lasso): Can shrink the coefficients of unimportant features to exactly zero.
-params_grid = [
-    {
-        "classifier__C": [0.001, 0.01, 0.1, 1, 10, 100],
-        "classifier__penalty": ["l2"],
-        "classifier__solver": ["lbfgs", "liblinear"],
-    },
-    {
-        "classifier__C": [0.001, 0.01, 0.1, 1, 10, 100],
-        "classifier__penalty": ["l1"],
-        "classifier__solver": ["saga"],
-    },
-]
+# 1: {'classifier__C': 0.001, 'classifier__penalty': 'l2', 'classifier__solver': 'liblinear'}
+# 2: Best parameters found:  {'classifier__C': 0.0001, 'classifier__penalty': 'l2', 'classifier__solver': 'liblinear'}
+params_grid = {
+    "classifier__C": [1e-05, 0.0001, 0.001, 0.01, 0.1, 1],
+    "classifier__penalty": ["l2"],
+    "classifier__solver": ["lbfgs", "liblinear", "saga"],
+}
 #  NOTE: BEST
 # 'classifier__C': 0.001: This is the most important result. A very small C value indicates that strong regularization is needed for your model to perform best. This helps prevent overfitting by penalizing large coefficient values, effectively creating a simpler, more generalized model.
 # 'classifier__penalty': 'l2': The grid search confirmed that the L2 (Ridge) penalty is the best choice.
