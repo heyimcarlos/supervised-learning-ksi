@@ -854,6 +854,10 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
         "time_of_day",
         "accident_location",
     ]
+    # Strip leading/trailing whitespace from all single-label categorical columns
+    for col in single_label:
+        if df[col].dtype == "object":
+            df[col] = df[col].str.strip()
 
     #  INFO: add manual mappings for light conditions
     light_mappings = {

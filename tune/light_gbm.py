@@ -1,4 +1,5 @@
 import os
+import re
 
 import joblib
 import lightgbm as lgb
@@ -17,27 +18,44 @@ DATASET_DIR = "datasets"
 
 X_train = pd.read_csv(os.path.join(DATASET_DIR, "X_train.csv"))
 y_train = pd.read_csv(os.path.join(DATASET_DIR, "y_train.csv")).squeeze()
+X_train.columns = [re.sub(r"[^A-Za-z0-9_]+", "", col) for col in X_train.columns]
 
 pipeline = Pipeline(
     [
         ("smote", SMOTE(random_state=42)),
-        ("classifier", lgb.LGBMClassifier(random_state=42)),
+        (
+            "classifier",
+            lgb.LGBMClassifier(
+                random_state=42,
+                class_weight="balanced",  # Handles class imbalance
+            ),
+        ),
     ]
 )
 
-# SVM-specific parameter grid
+
+# 1: Best parameters found:  {'classifier__reg_lambda': 1.0, 'classifier__reg_alpha': 0.5, 'classifier__num_leaves': 31, 'classifier__n_estimators': 100, 'classifier__min_child_samples': 70, 'classifier__max_depth': 5, 'classifier__learning_rate': 0.01}
 param_grid = {
-    "classifier__n_estimators": [100, 200, 500, 1000],
-    "classifier__learning_rate": [0.01, 0.05, 0.1],
-    "classifier__num_leaves": [20, 31, 40, 50],  # Should be < 2^max_depth
-    "classifier__max_depth": [5, 8, 10, -1],  # -1 means no limit
-    "classifier__min_child_samples": [20, 30, 50],  # Alias for min_data_in_leaf
-    "classifier__lambda_l1": [0, 0.1, 0.5],  # L1 regularization
-    "classifier__lambda_l2": [0, 0.1, 0.5],  # L2 regularization
+    # Relationship between learning rate and number of trees
+    "classifier__n_estimators": [100, 200, 500],
+    # "classifier__learning_rate": [0.01, 0.05, 0.1],
+    # Core parameters for controlling tree complexity
+    "classifier__num_leaves": [20, 30, 40, 255],
+    "classifier__max_depth": [5, 8, 10],  #
+    # Parameters for preventing overfitting (using correct names)
+    "classifier__min_child_samples": [30, 50, 70, 100],
+    # "classifier__reg_alpha": [0, 0.1, 0.5, 1.0],  # Corrected L1 regularization
+    # "classifier__reg_lambda": [0, 0.1, 0.5, 1.0],  # Corrected L2 regularization
 }
+# learning_rate = 0.1
+# num_leaves = 255
+# num_trees = 500
+# num_threads = 16
+# min_data_in_leaf = 0
+# min_sum_hessian_in_leaf = 100
 
 cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-recall_scorer = make_scorer(recall_score)
+recall_scorer = make_scorer(recall_score, pos_label="Fatal")
 
 random_search = RandomizedSearchCV(
     estimator=pipeline,

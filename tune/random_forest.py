@@ -44,7 +44,7 @@ params_grid = {
 cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 #  NOTE: Use recall as the scoring metric because the dataset is imbalanced
-recall_scorer = make_scorer(recall_score)
+recall_scorer = make_scorer(recall_score, pos_label="Fatal")
 
 random_search = RandomizedSearchCV(
     estimator=pipeline,
@@ -54,7 +54,7 @@ random_search = RandomizedSearchCV(
     verbose=3,
     random_state=42,
     n_jobs=-1,
-    n_iter=100,  # Number of parameter settings that are sampled
+    n_iter=50,  # Number of parameter settings that are sampled
 )
 random_search.fit(X_train, y_train)
 print("Best parameters found: ", random_search.best_params_)
@@ -89,7 +89,7 @@ y_pred = best_model.predict(X_test)
 
 # Print evaluation metrics
 print("\n" + "=" * 50)
-print("GRADIENT BOOSTING CLASSIFIER TEST RESULTS")
+print("Best Random Forest Model Evaluation")
 print("=" * 50)
 
 print("\nConfusion Matrix:")
@@ -101,9 +101,7 @@ print(classification_report(y_test, y_pred))
 # Calculate and display recall for Fatal class specifically
 from sklearn.metrics import recall_score
 
-fatal_recall = recall_score(
-    y_test, y_pred, pos_label=1
-)  # assuming 'Fatal' is encoded as 1
+fatal_recall = recall_score(y_test, y_pred, pos_label="Fatal")
 print(f"\nFatal Class Recall: {fatal_recall:.4f}")
 print(
     f"This means the model correctly identifies {fatal_recall*100:.2f}% of all fatal accidents"
