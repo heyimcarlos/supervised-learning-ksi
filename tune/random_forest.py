@@ -5,7 +5,12 @@ import pandas as pd
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import make_scorer, recall_score
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    make_scorer,
+    recall_score,
+)
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 
 # import sklearn
@@ -75,7 +80,6 @@ joblib.dump(random_search.best_estimator_, "models/best_random_forest.pkl")
 # joblib.dump(grid_search.best_estimator_, "best_random_forest_model.pkl")
 
 # Testing the best model
-from sklearn.metrics import classification_report, confusion_matrix
 
 # Load test data
 X_test = pd.read_csv(os.path.join(DATASET_DIR, "X_test.csv"))
@@ -97,9 +101,6 @@ print(confusion_matrix(y_test, y_pred))
 
 print("\nClassification Report:")
 print(classification_report(y_test, y_pred))
-
-# Calculate and display recall for Fatal class specifically
-from sklearn.metrics import recall_score
 
 fatal_recall = recall_score(y_test, y_pred, pos_label="Fatal")
 print(f"\nFatal Class Recall: {fatal_recall:.4f}")

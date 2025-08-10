@@ -47,12 +47,6 @@ param_grid = {
     # "classifier__reg_alpha": [0, 0.1, 0.5, 1.0],  # Corrected L1 regularization
     # "classifier__reg_lambda": [0, 0.1, 0.5, 1.0],  # Corrected L2 regularization
 }
-# learning_rate = 0.1
-# num_leaves = 255
-# num_trees = 500
-# num_threads = 16
-# min_data_in_leaf = 0
-# min_sum_hessian_in_leaf = 100
 
 cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 recall_scorer = make_scorer(recall_score, pos_label="Fatal")

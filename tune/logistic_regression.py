@@ -25,8 +25,6 @@ pipeline = Pipeline(
                 random_state=42,
                 max_iter=5000,
                 class_weight="balanced",
-                fit_intercept=True,
-                tol=1e-4,
             ),
         ),
     ]
@@ -38,7 +36,7 @@ pipeline = Pipeline(
 # 1: {'classifier__C': 0.001, 'classifier__penalty': 'l2', 'classifier__solver': 'liblinear'}
 # 2: Best parameters found:  {'classifier__C': 0.0001, 'classifier__penalty': 'l2', 'classifier__solver': 'liblinear'}
 params_grid = {
-    "classifier__C": [None, 0.0, 1e-05, 0.0001, 0.001, 0.01, 0.1, 1],
+    "classifier__C": [1e-05, 0.0001, 0.001, 0.01, 0.1, 1],
     "classifier__penalty": ["l2"],
     "classifier__solver": ["lbfgs", "liblinear", "saga"],
 }

@@ -87,7 +87,6 @@ X_test = pd.read_csv(os.path.join(DATASET_DIR, "X_test_selected.csv"))
 y_test_raw = pd.read_csv(os.path.join(DATASET_DIR, "y_test.csv")).squeeze()
 X_test.columns = [re.sub(r"[^A-Za-z0-9_]+", "", col) for col in X_test.columns]
 
-le = LabelEncoder()
 
 y_test = le.fit_transform(y_test_raw)
 
