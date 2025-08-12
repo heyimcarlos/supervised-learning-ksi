@@ -17,7 +17,7 @@ y_test = pd.read_csv(
     os.path.join(DATASET_DIR, "y_test.csv")
 ).squeeze()  # converts DataFrame to Series
 
-model_rf = joblib.load("models/best_random_forest.pkl")
+# model_rf = joblib.load("models/best_random_forest.pkl")
 model_lr = joblib.load("models/best_logistic_regression.pkl")
 # model_gb = joblib.load("models/best_gradient_boosting.pkl")
 # model_svm = joblib.load("models/best_svm.pkl")
