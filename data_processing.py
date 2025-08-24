@@ -303,7 +303,7 @@ def clean_data(df):
         "initial_direction": get_most_frequent,
         "vehicle_type": get_all_unique,
         "manoeuver": get_all_unique,
-        "driver_action": get_all_unique,
+        "driver_action": get_all_values,
         "driver_condition": get_all_unique,
         "pedestrian_type": get_all_unique,
         "pedestrian_action": get_all_unique,
@@ -327,6 +327,7 @@ def clean_data(df):
 
     # after aggregation categorizing involvement_age call
     aggregated_df = categorize_age_groups(aggregated_df)
+    aggregated_df = categorize_driver_actions(aggregated_df) 
 
     #  NOTE: add is_weekend feature
     aggregated_df["is_weekend"] = (
@@ -718,22 +719,6 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
         "Following too Close": "reckless_operation",
     }
 
-    driver_action_mappings = {
-        "Driving Properly": "driving_properly",
-        "Failed to Yield Right of Way": "failed_to_yield",
-        "Lost control": "reckless_operation",
-        "Improper Turn": "improper_maneuver",
-        "Improper Passing": "improper_maneuver",
-        "Improper Lane Change": "improper_maneuver",
-        "Other": "other",
-        "Disobeyed Traffic Control": "disregard_traffic_laws",
-        "Following too Close": "reckless_operation",
-        "Exceeding Speed Limit": "reckless_operation",
-        "Speed too Fast For Condition": "reckless_operation",
-        "Unknown": "unknown",
-        "Speed too Slow": "reckless_operation",
-        "Wrong Way on One Way Road": "disregard_traffic_laws",
-    }
 
     driver_condition_mappings = {
         "Normal": "normal",
@@ -809,7 +794,6 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
         ("cyclist_action", cyclist_action_mappings),
         ("cyclist_condition", cyclist_condition_mappings),
         ("cyclist_type", cyclist_type_mappings),
-        ("driver_action", driver_action_mappings),
         ("driver_condition", driver_condition_mappings),
         ("vehicle_type", vehicle_type_mappings),
         ("manoeuver", manoeuver_mappings),
@@ -906,12 +890,6 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
             | (df["road_surface_condition_Ice"] == 1)
         )
         & (df["light_dark"] == 1)
-    ).astype(int)
-
-    # # INFO: Reckless at intersection
-    df["reckless_at_intersection"] = (
-        (df["driver_action_reckless_operation"] == 1)
-        & (df["accident_location_Intersection Related"] == 1)
     ).astype(int)
 
     return df
@@ -1272,6 +1250,55 @@ def analyze_age_groups(df):
         print("----------------------------------------")
 
     return age_fatality_data
+def analyze_driver_actions(df):
+    """
+    Analyzes unique driver actions and their frequencies in the dataset.
+    
+    Args:
+        df (pd.DataFrame): DataFrame containing 'driver_action' column
+    Returns:
+        pd.DataFrame: DataFrame with action frequencies and fatality rates
+    """
+    from collections import Counter
+    
+    # Get all individual actions across all records
+    all_actions = []
+    fatal_actions = []
+    
+    for idx, row in df.iterrows():
+        actions = row['driver_action']
+        is_fatal = row['accident_class'] == 'Fatal'
+        
+        if isinstance(actions, list):
+            all_actions.extend(actions)
+            if is_fatal:
+                fatal_actions.extend(actions)
+    
+    # Count total frequencies and fatal frequencies
+    total_counts = Counter(all_actions)
+    fatal_counts = Counter(fatal_actions)
+    
+    # Create DataFrame with frequencies and fatality rates
+    actions_df = pd.DataFrame({
+        'total_count': pd.Series(total_counts),
+        'fatal_count': pd.Series(fatal_counts)
+    }).fillna(0)
+    
+    # Calculate fatality rate
+    actions_df['fatality_rate'] = (actions_df['fatal_count'] / actions_df['total_count'] * 100).round(2)
+    actions_df = actions_df.sort_values('total_count', ascending=False)
+    
+    print("\nDriver Action Analysis:")
+    print("------------------------")
+    print(f"Total unique driver actions: {len(actions_df)}")
+    print("\n most common driver actions:")
+    for action, row in actions_df.head(13).iterrows():
+        print(f"\n{action}:")
+        print(f"Total occurrences: {int(row['total_count'])}")
+        print(f"Fatal occurrences: {int(row['fatal_count'])}")
+        print(f"Fatality rate: {row['fatality_rate']}%")
+    
+    return actions_df
 
 
 # cleaning and splitting involvement_age
@@ -1338,6 +1365,70 @@ def categorize_age_groups(df):
 
     return df
 
+def categorize_driver_actions(df):
+    """
+    Categorizes driver actions into three risk levels and counts occurrences.
+    
+    Args:
+        df (pd.DataFrame): DataFrame with 'driver_action' column containing lists of actions
+    Returns:
+        pd.DataFrame: DataFrame with new risk level columns and without original driver_action column
+    """
+    # Define risk categories
+    high_risk = ['Exceeding Speed Limit']
+    
+    medium_risk = [
+        'Lost Control', 
+        'Other',
+        'Disobeyed Traffic Control',
+        'Speed too Fast For Condition',
+        'Failed to Yield Right of Way',
+        'Wrong Way on One Way Road'
+    ]
+    
+    low_risk = [
+        'Driving Properly',
+        'Improper Turn',
+        'Improper Passing',
+        'Improper Lane Change',
+        'Following too Close'
+    ]
+    
+    def count_risk_levels(action_list):
+        if not isinstance(action_list, list):
+            return pd.Series({
+                'high_risk_action_count': 0,
+                'medium_risk_action_count': 0,
+                'low_risk_action_count': 0
+            })
+            
+        counts = {
+            'high_risk_action_count': 0,
+            'medium_risk_action_count': 0,
+            'low_risk_action_count': 0
+        }
+        
+        for action in action_list:
+            if action in high_risk:
+                counts['high_risk_action_count'] += 1
+            elif action in medium_risk:
+                counts['medium_risk_action_count'] += 1
+            elif action in low_risk:
+                counts['low_risk_action_count'] += 1
+                
+        return pd.Series(counts)
+    
+    # Apply categorization
+    risk_counts = df['driver_action'].apply(count_risk_levels)
+    
+    # Add new columns to DataFrame
+    df[['high_risk_action_count', 'medium_risk_action_count', 'low_risk_action_count']] = risk_counts
+    
+    # Drop original driver_action column
+    df.drop('driver_action', axis=1, inplace=True)
+    
+    return df
+
 
 if __name__ == "__main__":
     # 1. Load data
@@ -1355,7 +1446,6 @@ if __name__ == "__main__":
 
         # 4. Perform data quality check
         # perform_data_quality_check(cleaned_df)
-
         # 5. Feature engineering (or perform encoding, imputing, drop features)
         #  TODO: https://scikit-learn.org/stable/modules/feature_selection.html#tree-based-feature-selection
         # Use feature importances (of the selected classifier) for feature selection.
